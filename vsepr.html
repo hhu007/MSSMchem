@@ -1,0 +1,435 @@
+<meta charset="utf-8">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>MSSM VSEPR Model Viewer</title>
+<style>
+/* Layout: formula bar on top; 3D stage beside a data sheet, stacked on phones */
+:root{--bg:#f3f6f8;--panel:#fff;--fg:#14222e;--mute:#566978;--line:#d5dee5;--accent:#0b6e8a;--on:#fff;--stage:#0f1b26;--ink:#e8f1f7;--warn:#8a4b00}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0a1117;--panel:#121c25;--fg:#e3edf4;--mute:#93a7b6;--line:#263642;--accent:#53c2dd;--on:#06222b;--stage:#05090d;--warn:#f0b35c;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0a1117;--panel:#121c25;--fg:#e3edf4;--mute:#93a7b6;--line:#263642;--accent:#53c2dd;--on:#06222b;--stage:#05090d;--warn:#f0b35c;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px}
+main{max-width:1000px;margin:auto;display:flex;flex-direction:column;gap:14px}
+h1{font-size:22px;margin:0}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.by{margin-left:auto;font-size:13px;color:var(--mute)}
+form,.row{display:flex;gap:8px;flex-wrap:wrap}
+input[type=text]{flex:1;min-width:0;font:18px ui-monospace,monospace;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg)}
+button{font:inherit;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--fg);cursor:pointer}
+button[type=submit]{background:var(--accent);color:var(--on);border-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{color:var(--mute);font-size:13px;margin:0}
+#err{color:var(--warn);margin:0}
+.grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:14px}
+@media (max-width:720px){.grid{grid-template-columns:minmax(0,1fr)}}
+canvas{width:100%;height:460px;background:var(--stage);border-radius:8px;touch-action:none;cursor:grab;display:block}
+section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0}
+h2{margin:0;font-size:21px;color:var(--accent)}
+dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:14px 0}
+dt{color:var(--mute)}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.center{display:block;width:100%;text-align:left;margin-top:8px;font-size:14px}
+.center[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+label{display:flex;gap:5px;align-items:center}
+</style>
+<main>
+<header><h1>MSSM VSEPR Model Viewer</h1><span class="by">By Mr. Hu with Claude</span></header>
+<form id="f"><input type="text" id="q" value="SF4" aria-label="Molecular formula" autocomplete="off" spellcheck="false"><button type="submit">Show model</button></form>
+<div class="row" id="ex"></div>
+<p class="hint">Charges: NH4+, SO4^2-, PO4^3-. For several central atoms, write them in order: H2CCH2, CH3CH2OH. Main-group elements; no rings.</p>
+<p id="err" role="alert"></p>
+<div class="grid">
+<div>
+<canvas id="c" aria-label="Rotatable 3D molecular model"></canvas>
+<div class="row" style="margin-top:8px">
+<label><input type="checkbox" id="lp" checked>Lone pairs</label>
+<label><input type="checkbox" id="ang" checked>Angles</label>
+<label><input type="checkbox" id="spin">Spin</label>
+<button id="zi" type="button">Zoom in</button><button id="zo" type="button">Zoom out</button>
+</div>
+<p class="hint">Drag to rotate.</p>
+</div>
+<section id="info"></section>
+</div>
+</main>
+<script>
+//--CHEM--
+const EL={},VAL={};
+// symbol: [valence e-, period, electronegativity, color, radius]
+"H 1 1 2.20 #e8eef2 .26;He 8 1 5 #a8e6ef .3;Li 1 2 .98 #b58cff .4;Be 2 2 1.57 #b9e04c .4;B 3 2 2.04 #f2b090 .4;C 4 2 2.55 #7a8793 .4;N 5 2 3.04 #4a6df0 .39;O 6 2 3.44 #e8453c .38;F 7 2 3.98 #7fd86a .35;Ne 8 2 5 #a8e6ef .35;Mg 2 3 1.31 #7ccf3a .45;Al 3 3 1.61 #b9a6a6 .46;Si 4 3 1.90 #d8b48c .46;P 5 3 2.19 #f58a26 .45;S 6 3 2.58 #efd332 .45;Cl 7 3 3.16 #35c94a .44;Ar 8 3 5 #80d1e3 .42;Ga 3 4 1.81 #c28f8f .47;Ge 4 4 2.01 #6f9494 .47;As 5 4 2.18 #bd80e3 .47;Se 6 4 2.55 #f0a000 .47;Br 7 4 2.96 #a8402a .48;Kr 8 4 3.0 #5cb8d1 .46;In 3 5 1.78 #a67573 .52;Sn 4 5 1.96 #788f99 .52;Sb 5 5 2.05 #9e63b5 .52;Te 6 5 2.1 #d47a00 .52;I 7 5 2.66 #9a3fc0 .53;Xe 8 5 2.6 #429eb0 .52;Pb 4 6 2.33 #6a6e78 .54;Bi 5 6 2.02 #9e4fb5 .54".split(";").forEach(s=>{const[k,v,p,x,c,r]=s.split(" ");EL[k]={v:+v,p:+p,x:+x,c,r:+r}});
+
+function parse(input){
+  let s=input.trim().replace(/[₀-₉]/g,d=>"₀₁₂₃₄₅₆₇₈₉".indexOf(d)).replace(/[−–]/g,"-").replace(/⁺/g,"+").replace(/⁻/g,"-").replace(/²/g,"^2").replace(/³/g,"^3");
+  let q=0,m=s.match(/(?:\^|\s+)(\d*)([+-])$/)||s.match(/()([+-])$/);
+  if(m){q=(+m[1]||1)*(m[2]=="+"?1:-1);s=s.slice(0,m.index)}
+  s=s.replace(/[\s\[\]]/g,"");
+  const st=[{}];let i=0;const re=/([A-Z][a-z]?)(\d*)|(\()|\)(\d*)/y;
+  while(i<s.length){re.lastIndex=i;const t=re.exec(s);
+    if(!t)throw Error("I couldn't read that formula. Capitalise element symbols, e.g. CO2 or XeF4.");
+    i=re.lastIndex;
+    if(t[1]){if(!EL[t[1]])throw Error(t[1]+" isn't supported. VSEPR works for main-group elements, not transition metals or ionic salts.");
+      const o=st[st.length-1];o[t[1]]=(o[t[1]]||0)+(+(t[2]||1))}
+    else if(t[3])st.push({});
+    else{if(st.length<2)throw Error("Unmatched parenthesis.");const g=st.pop(),o=st[st.length-1];for(const k in g)o[k]=(o[k]||0)+g[k]*(+t[4]||1)}
+  }
+  if(st.length>1)throw Error("Unmatched parenthesis.");
+  return{n:st[0],q};
+}
+
+const NAMES={"1":"Linear","2,0":"Linear","2,1":"Bent","2,2":"Bent","2,3":"Linear","3,0":"Trigonal planar","3,1":"Trigonal pyramidal","3,2":"T-shaped","4,0":"Tetrahedral","4,1":"Seesaw","4,2":"Square planar","5,0":"Trigonal bipyramidal","5,1":"Square pyramidal","5,2":"Pentagonal planar","6,0":"Octahedral","6,1":"Distorted octahedral","7,0":"Pentagonal bipyramidal"};
+const EDOM={1:"Single domain",2:"Linear",3:"Trigonal planar",4:"Tetrahedral",5:"Trigonal bipyramidal",6:"Octahedral",7:"Pentagonal bipyramidal"};
+const HYB={1:"s",2:"sp",3:"sp²",4:"sp³",5:"sp³d",6:"sp³d²",7:"sp³d³"};
+const REAL={"H2O":"104.5°","H2S":"92°","NH3":"107°","PH3":"93.5°","NF3":"102°","PCl3":"100°","SO2":"119°","O3":"117°","NO2":"134°","OF2":"103°","SF4":"about 102° and 173°","ClF3":"about 87.5°"};
+
+function solve(input){
+  const{n,q}=parse(input),keys=Object.keys(n),total=keys.reduce((a,k)=>a+n[k],0);
+  if(total<2)throw Error("Enter a molecule with at least two atoms.");
+  let V=-q;for(const k of keys)V+=EL[k].v*n[k];
+  if(V<2)throw Error("That charge leaves too few electrons.");
+  const multi="This needs more than one central atom (or isn't a stable species). Try a formula like CH4, SO4^2- or XeF4.";
+  const notes=[];
+  if(total==2){
+    const atoms=keys.flatMap(k=>Array(n[k]).fill(k)).sort((a,b)=>EL[a].x-EL[b].x);
+    const[a,b]=atoms,need=(a=="H"?2:8)+(b=="H"?2:8);
+    const order=Math.max(1,Math.min(3,Math.floor((need-V)/2)));
+    const c=a=="H"?b:a,t=c==a?b:a;
+    const lp=c=="H"?0:Math.max(0,Math.round((EL[c].v-(c==a?q:0)-order)/2));
+    if(V%2)notes.push("Odd electron count (radical). The bond order shown is rounded.");
+    return{c,terms:[{el:t,order,h:false}],lp,q,V,notes,key:input};
+  }
+  const has=k=>n[k]||0;
+  let c;
+  const hox=total==3&&has("H")==1&&has("O")==1&&keys.some(k=>["F","Cl","Br","I"].includes(k));
+  if(hox)c="O";
+  else if(keys.length==1){if(total!=3)throw Error(multi);c=keys[0]}
+  else{
+    const pool=keys.filter(k=>k!="H"&&k!="F").sort((a,b)=>EL[a].x-EL[b].x);
+    c=pool.filter(k=>n[k]==1)[0];
+    if(total==3&&["N","S"].includes(pool[0])&&n[pool[0]]==2&&has("O"))c=pool[0];
+    if(!c||(pool[0]!=c&&n[pool[0]]>1&&pool[0]=="C"))throw Error(multi);
+  }
+  const rest={...n};rest[c]--;
+  let oh=0;
+  if(!hox&&c!="O"&&has("H")&&rest.O){
+    const carbonic=c=="C"&&has("O")==3;
+    if(c!="C"||carbonic){
+      oh=Math.min(has("H"),rest.O);
+      if(c=="P"&&has("O")==3&&has("H")==3)oh=2;
+      if(c=="P"&&has("O")==2&&has("H")==3)oh=1;
+      if(c=="N"&&has("H")==1&&has("O")==1&&total==3)oh=0;
+    }
+  }
+  rest.O&&(rest.O-=oh);if(oh)rest.H-=oh;
+  const terms=[];
+  for(const k in rest)for(let i=0;i<rest[k];i++)terms.push({el:k,order:1,h:false});
+  for(let i=0;i<oh;i++)terms.push({el:"O",order:1,h:true});
+  const used=terms.reduce((a,t)=>a+(t.h?8:t.el=="H"?2:8),0);
+  const left=V-used;
+  if(left<0)throw Error(multi);
+  const lp=Math.ceil(left/2),sn=terms.length+lp;
+  if(sn>7||!NAMES[terms.length+","+lp]||c=="H"||(EL[c].p<3&&sn>4))throw Error("No sensible VSEPR structure for this formula. Check the atom counts and charge.");
+  if(left%2)notes.push("Odd electron count (radical). The single electron is drawn as a lone-pair domain, so treat the shape as approximate.");
+  let bonds=terms.length;
+  const can=t=>!t.h&&(["O","S"].includes(t.el)?t.order<2:["N","C"].includes(t.el)&&t.order<3);
+  const wants=()=>{
+    if(["B","Be","Al","Mg"].includes(c))return false;
+    if(EL[c].p==2)return left+2*bonds<=6;
+    return EL[c].v-(c=="N"?q:0)-left-bonds>0;
+  };
+  while(wants()){const t=terms.filter(can).sort((a,b)=>a.order-b.order)[0];if(!t)break;t.order++;bonds++}
+  if(["O","S","N"].some(e=>new Set(terms.filter(t=>t.el==e&&!t.h).map(t=>t.order)).size>1))notes.push("Resonance: the double bond is shared among equivalent atoms, so those bonds are really identical.");
+  if(c=="Xe"&&terms.length==6&&lp==1)notes.push("The real molecule is fluxional. The distortion is only sketched.");
+  return{c,terms,lp,q,V,notes,key:input.trim()};
+}
+
+function layout(m){
+  const nb=m.terms.length,sn=nb+m.lp,r=Math.PI/180;
+  const ring=(k,y=0,rad=1,off=0)=>Array.from({length:k},(_,i)=>{const a=(i*360/k+off)*r;return[rad*Math.cos(a),y,rad*Math.sin(a)]});
+  const up=[0,1,0],dn=[0,-1,0];
+  // positions are listed so that lone pairs take the first ones
+  let p;
+  if(sn==1)p=[[1,0,0]];
+  else if(sn==2)p=[[-1,0,0],[1,0,0]];
+  else if(sn==3)p=[up,[.866,-.5,0],[-.866,-.5,0]];
+  else if(sn==4)p=[up,...ring(3,-1/3,Math.sqrt(8/9),90)];
+  else if(sn==5)p=[...ring(3),up,dn];
+  else if(sn==6)p=[up,dn,[1,0,0],[-1,0,0],[0,0,1],[0,0,-1]];
+  else p=[up,dn,...ring(5)];
+  if(nb==1&&m.lp>0){p=[...p.filter(v=>v!==p[0]),p[0]]}
+  const lps=p.slice(0,m.lp),pos=p.slice(m.lp);
+  const sorted=[...m.terms].sort((a,b)=>b.order-a.order||EL[a.el].x-EL[b.el].x);
+  return{lps,bonds:sorted.map((t,i)=>({...t,d:pos[i]}))};
+}
+function angles(bonds){
+  const out=new Map();
+  bonds.forEach((a,i)=>bonds.slice(i+1).forEach(b=>{
+    const d=a.d[0]*b.d[0]+a.d[1]*b.d[1]+a.d[2]*b.d[2];
+    const g=Math.round(Math.acos(Math.max(-1,Math.min(1,d)))*1800/Math.PI)/10;
+    const k=Math.round(g);if(!out.has(k))out.set(k,{g,a:a.d,b:b.d});
+  }));
+  return[...out.values()].sort((a,b)=>a.g-b.g);
+}
+
+const GROUPV={H:[1],B:[3],C:[4],Si:[4],Ge:[4],N:[3],P:[3,5],As:[3,5],O:[2],S:[2,4,6],Se:[2,4],F:[1],Cl:[1],Br:[1],I:[1]};
+const ALIAS={"C2H2":"HCCH","C2H4":"H2CCH2","C2H6":"CH3CH3","C3H6":"CH2CHCH3","C3H8":"CH3CH2CH3","H2O2":"HOOH","N2H4":"H2NNH2","CH4O":"CH3OH"};
+const HOWTO="Write it in condensed form, atom by atom, e.g. CH3CH2OH or CH3OCH3. Rings such as benzene aren't supported.";
+function chain(input){
+  let s=input.trim().replace(/[₀-₉]/g,d=>"₀₁₂₃₄₅₆₇₈₉".indexOf(d)).replace(/[−–]/g,"-").replace(/⁺/g,"+").replace(/⁻/g,"-");
+  const{n,q}=parse(s);
+  const m=s.match(/(?:\^|\s+)(\d*)([+-])$/)||s.match(/()([+-])$/);if(m)s=s.slice(0,m.index);
+  s=s.replace(/\s/g,"");
+  if(Math.abs(q)>1)throw Error("Chains can only carry a single + or - charge.");
+  const syms=s.match(/[A-Z][a-z]?/g)||[];
+  const same=k=>{const o=parse(k).n,ks=Object.keys(o);return ks.length==Object.keys(n).length&&ks.every(e=>o[e]==n[e])};
+  const alias=Object.keys(ALIAS).find(same);
+  if(!q&&new Set(syms).size==syms.length&&alias)s=ALIAS[alias];
+  s=s.replace(/C2H5/g,"CH3CH2");
+  s=s.replace(/^(\([A-Za-z0-9]+\)\d*)([A-Z][a-z]?(?:H\d*)?)/,"$2$1");
+  let prev;do{prev=s;s=s.replace(/\(([A-Za-z0-9]+)\)(\d*)/,(_,g,k)=>g.repeat(Math.min(+k||1,20)))}while(s!=prev);
+  const A=[];let lead=0;
+  for(const[,el,k]of s.matchAll(/([A-Z][a-z]?)(\d*)/g)){
+    const c=Math.min(+k||1,40);
+    if(!GROUPV[el])throw Error(el+" isn't supported in molecules with several central atoms.");
+    if(el=="H"){A.length?A[A.length-1].h+=c:lead+=c}
+    else for(let i=0;i<c;i++)A.push({el,h:0});
+    if(A.length>20)throw Error("That molecule is too large. The limit is 20 non-hydrogen atoms.");
+  }
+  if(A.length<2)throw Error(HOWTO);
+  A[0].h+=lead;
+  const par=[-1],deg=A.map(a=>a.h);let steps=0,found=null;
+  const max=A.map(a=>Math.max(...GROUPV[a.el])+(q>0&&(a.el=="N"||a.el=="O")?1:0));
+  function orders(){
+    const targets=q==0?[-1]:A.map((a,i)=>i).filter(i=>q>0?["N","O"].includes(A[i].el):["O","S","C","N"].includes(A[i].el)).sort((i,j)=>EL[A[j].el].x-EL[A[i].el].x||j-i);
+    for(const t of targets){
+      const val=[],ord=[];
+      const go=i=>{ // children have higher indices than parents
+        if(i<0)return true;
+        let used=A[i].h;for(let j=i+1;j<A.length;j++)if(par[j]==i)used+=ord[j];
+        for(const base of GROUPV[A[i].el]){
+          const v=base+(i==t?q:0),need=v-used;
+          const lp2=EL[A[i].el].v-(i==t?q:0)-v;
+          if(lp2<0||lp2%2)continue;
+          if(i==0?need!=0:need<1||need>3)continue;
+          val[i]={lp:lp2/2,charge:i==t?q:0};ord[i]=need;
+          if(go(i-1))return true;
+        }
+        return false;
+      };
+      if(go(A.length-1))return{val,ord};
+    }
+  }
+  (function attach(i){
+    if(found||++steps>20000)return;
+    if(i==A.length){const o=orders();if(o)found={...o,par:[...par]};return}
+    for(let p=i-1;p>=0&&!found;p--){
+      if(deg[p]>=max[p]||deg[i]>=max[i])continue;
+      par[i]=p;deg[p]++;deg[i]++;attach(i+1);deg[p]--;deg[i]--;
+    }
+  })(1);
+  if(!found)throw Error("I couldn't connect those atoms into a stable molecule. "+HOWTO);
+  const atoms=A.map((a,i)=>({el:a.el,lp:found.val[i].lp,charge:found.val[i].charge,nb:[]}));
+  const link=(a,b,order)=>{atoms[a].nb.push({to:b,order});atoms[b].nb.push({to:a,order})};
+  for(let i=1;i<A.length;i++)link(found.par[i],i,found.ord[i]);
+  A.forEach((a,i)=>{for(let k=0;k<a.h;k++){atoms.push({el:"H",lp:0,charge:0,nb:[]});link(i,atoms.length-1,1)}});
+  return{atoms,q,heavy:A.length,key:input.trim()};
+}
+
+const add3=(a,b)=>a.map((x,i)=>x+b[i]),mul3=(a,k)=>a.map(x=>x*k),dot3=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const unit=a=>mul3(a,1/(Math.hypot(...a)||1));
+const turn=(v,k,t)=>add3(add3(mul3(v,Math.cos(t)),mul3(cross(k,v),Math.sin(t))),mul3(k,dot3(k,v)*(1-Math.cos(t))));
+function domains(sn){
+  const ring=(k,y,rad,off)=>Array.from({length:k},(_,i)=>{const a=(i*360/k+off)*Math.PI/180;return[rad*Math.cos(a),y,rad*Math.sin(a)]});
+  const up=[0,1,0],dn=[0,-1,0];
+  return[[],[[1,0,0]],[[-1,0,0],[1,0,0]],[up,[.866,-.5,0],[-.866,-.5,0]],[up,...ring(3,-1/3,Math.sqrt(8/9),90)],[...ring(3,0,1,0),up,dn],[up,dn,[1,0,0],[-1,0,0],[0,0,1],[0,0,-1]]][sn];
+}
+// Place atoms outward from the first one, choosing each twist about the new bond.
+function embed(mol){
+  const A=mol.atoms,sn=a=>a.nb.length+a.lp,queue=[0],lps=[];
+  A[0].pos=[0,0,0];
+  for(let qi=0;qi<queue.length;qi++){
+    const i=queue[qi],a=A[i],N=sn(a);let set=domains(N).map(unit);
+    const back=a.from===undefined?null:unit(add3(A[a.from].pos,mul3(a.pos,-1)));
+    const placed=A.filter((x,j)=>x.pos&&j!=i&&j!=a.from).map(x=>x.pos).concat(lps.map(l=>l.p));
+    const rep=d=>{const p=add3(a.pos,d);return placed.reduce((t,o)=>{const v=add3(p,mul3(o,-1));return t+1/(dot3(v,v)**2+.05)},0)};
+    let want=null,inPlane=false,used=-1;
+    if(back){
+      const P=A[a.from],order=a.nb.find(x=>x.to==a.from).order,axis=mul3(back,-1);
+      if(P.normal){
+        if(order>1&&sn(P)==2)want=unit(cross(axis,P.normal));
+        else if(sn(P)<=3&&(N<=3||a.lp))want=P.normal;
+        inPlane=!!want&&N==4;
+      }
+      used=a.lp<N?a.lp:0;
+      const from=set[used],c=dot3(from,back);
+      let k=cross(from,back);k=Math.hypot(...k)<1e-6?unit(cross(from,Math.abs(from[0])<.9?[1,0,0]:[0,1,0])):unit(k);
+      const aligned=set.map(v=>turn(v,k,Math.acos(Math.max(-1,Math.min(1,c)))));
+      let best=1e18;
+      for(let t=0;t<360;t+=5){
+        const cand=aligned.map(v=>turn(v,back,t*Math.PI/180)),free=cand.filter((_,j)=>j!=used);
+        let score=free.reduce((x,v)=>x+rep(v),0)*(N>1?1:0);
+        if(want){
+          if(inPlane)score+=1000*Math.min(...free.map(v=>Math.abs(dot3(v,want))));
+          else if(N==3)score+=1000*(1-Math.abs(dot3(unit(cross(cand[0],cand[1])),want)));
+        }
+        if(score<best-1e-9){best=score;set=cand}
+      }
+    }
+    if(N==3)a.normal=unit(cross(set[0],set[1]));
+    else if(N==2)a.normal=want&&Math.abs(dot3(want,set[0]))<.1?want:unit(cross(set[0],Math.abs(set[0][1])<.9?[0,1,0]:[0,0,1]));
+    else if(inPlane)a.normal=want;
+    let free=set.map((d,j)=>({d,j})).filter(x=>x.j!=used);
+    const lpSlots=free.filter(x=>x.j<a.lp),bondSlots=free.filter(x=>x.j>=a.lp);
+    const cost=x=>rep(x.d)+(inPlane?1000*Math.abs(dot3(x.d,want)):0);
+    const kids=a.nb.filter(x=>x.to!=a.from).sort((x,y)=>A[y.to].nb.length-A[x.to].nb.length||(A[x.to].el=="H")-(A[y.to].el=="H"));
+    for(const{to,order}of kids){
+      bondSlots.sort((x,y)=>cost(x)-cost(y));
+      const d=bondSlots.shift().d,b=A[to];
+      b.pos=add3(a.pos,mul3(d,b.el=="H"?1.05:[0,1.5,1.34,1.22][order]));b.from=i;placed.push(b.pos);queue.push(to);
+    }
+    for(const x of lpSlots)lps.push({i,d:x.d,p:add3(a.pos,mul3(x.d,.7))});
+  }
+  const bonds=[];
+  A.forEach((a,i)=>a.nb.forEach(x=>{if(x.to>i)bonds.push({a:i,b:x.to,order:x.order})}));
+  return{atoms:A,bonds,lps};
+}
+function build(text){
+  const s=text.replace(/[=≡]|-(?=[A-Z(])/g,"");
+  try{return{single:solve(s)}}
+  catch(e){parse(s);return{multi:chain(s)}}
+}
+//--END--
+
+const $=id=>document.getElementById(id),cv=$("c"),ctx=cv.getContext("2d");
+let model,scene,sel=0,angs,rx=-.3,ry=1,zoom=1;
+const sub=s=>s.replace(/(?<=[A-Za-z)])\d+/g,d=>[...d].map(x=>"₀₁₂₃₄₅₆₇₈₉"[x]).join(""));
+function singleScene(m){
+  const g=layout(m),atoms=[{el:m.c,pos:[0,0,0]}],bonds=[],lps=g.lps.map(d=>({i:0,d})),nbr=[];
+  for(const t of g.bonds){
+    const end=mul3(t.d,1.45),i=atoms.push({el:t.el,pos:end})-1;bonds.push({a:0,b:i,order:t.order});nbr.push(t.d);
+    if(t.h){const side=Math.abs(t.d[1])<.9?[0,1,0]:[1,0,0],u=unit(add3(side,mul3(t.d,-dot3(side,t.d))));
+      const j=atoms.push({el:"H",pos:add3(end,add3(mul3(t.d,.3),mul3(u,.7)))})-1;bonds.push({a:i,b:j,order:1})}
+  }
+  return{atoms,bonds,lps,centers:m.terms.length>1?[{i:0,dirs:nbr}]:[]};
+}
+function multiScene(m){
+  const g=embed(m),count={};
+  const mid=mul3(g.atoms.reduce((t,a)=>add3(t,a.pos),[0,0,0]),1/g.atoms.length);
+  const centers=[];
+  g.atoms.forEach((a,i)=>{
+    if(a.el=="H")return;
+    count[a.el]=(count[a.el]||0)+1;a.name=a.el+count[a.el];
+    if(a.nb.length>1)centers.push({i,dirs:a.nb.map(x=>unit(add3(g.atoms[x.to].pos,mul3(a.pos,-1))))});
+  });
+  g.atoms.forEach(a=>a.pos=add3(a.pos,mul3(mid,-1)));
+  return{...g,centers};
+}
+const angleList=dirs=>angles(dirs.map(d=>({d})));
+function pick(k){
+  sel=k;angs=scene.centers[k]?angleList(scene.centers[k].dirs):[];
+  document.querySelectorAll("[data-c]").forEach(b=>b.setAttribute("aria-pressed",+b.dataset.c==k));
+  draw();
+}
+const table=rows=>"<dl>"+rows.map(r=>"<dt>"+r[0]+"</dt><dd>"+r[1]+"</dd>").join("")+"</dl>";
+function singlePanel(m){
+  const nb=m.terms.length,sn=nb+m.lp,dia=nb==1;
+  const name=dia?"Linear":NAMES[nb+","+m.lp];
+  const f=m.key.replace(/(\^|\s)?\d*[+\-−]$/,"");
+  const real=!m.q&&REAL[f];
+  const rows=[["Central atom",dia?"none (diatomic)":m.c],["VSEPR class",dia?"diatomic":"AX"+(nb>1?nb:"")+(m.lp?"E"+(m.lp>1?m.lp:""):"")],["Valence electrons",m.V],["Bonded atoms",dia?2:nb],[dia?"Lone pairs on "+m.c:"Lone pairs on center",m.lp]];
+  if(!dia)rows.push(["Electron geometry",EDOM[sn]],["Hybridization (model)",HYB[sn]],["Ideal angles",angs.map(a=>a.g+"°").join(", ")]);
+  if(real)rows.push(["Measured angle",real]);
+  if(dia)rows.push(["Bond order",m.terms[0].order]);
+  return"<h2>"+name+"</h2><div>"+sub(f)+(m.q?" (charge "+(m.q>0?"+":"−")+Math.abs(m.q)+")":"")+"</div>"+table(rows)+(m.lp&&!dia?"<p class='hint'>The model uses ideal angles. Lone pairs usually squeeze real bond angles a few degrees smaller.</p>":"")+m.notes.map(n=>"<p class='hint'>"+n+"</p>").join("");
+}
+function multiPanel(m){
+  const n=scene.centers.length,f=m.key.replace(/[+\-−]$/,"");
+  let h="<h2>"+(n?n+" central atom"+(n>1?"s":""):"Linear")+"</h2><div>"+sub(f)+(m.q?" (charge "+(m.q>0?"+":"−")+"1)":"")+"</div>";
+  if(n)h+="<p class='hint'>Select an atom to see its angles.</p>";
+  scene.centers.forEach((c,k)=>{
+    const a=scene.atoms[c.i],nb=a.nb.length,sn=nb+a.lp;
+    h+="<button type='button' class='center' data-c='"+k+"'><b>"+a.name+": "+(NAMES[nb+","+a.lp]||EDOM[sn])+"</b><br>AX"+nb+(a.lp?"E"+(a.lp>1?a.lp:""):"")+", "+HYB[sn]+", "+angleList(c.dirs).map(x=>x.g+"°").join(", ")+"</button>";
+  });
+  return h+"<p class='hint'>Angles are ideal values. Twists around single bonds are one reasonable pose, since real molecules rotate there.</p>";
+}
+function show(text){
+  try{
+    const r=build(text),m=r.single||r.multi;
+    const next=r.single?singleScene(m):multiScene(m);
+    model=m;scene=next;$("err").textContent="";
+    rx=-.3;ry=r.single?1:.45;
+    angs=scene.centers[0]?angleList(scene.centers[0].dirs):[];
+    $("info").innerHTML=r.single?singlePanel(m):multiPanel(m);
+    document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>pick(+b.dataset.c));
+    pick(0);
+  }catch(e){$("err").textContent=e.message+(model?" The previous model is still shown.":"")}
+}
+function rot([x,y,z]){
+  const a=x*Math.cos(ry)+z*Math.sin(ry),b=-x*Math.sin(ry)+z*Math.cos(ry);
+  return[a,y*Math.cos(rx)-b*Math.sin(rx),y*Math.sin(rx)+b*Math.cos(rx)];
+}
+function draw(){
+  if(!scene)return;
+  const w=cv.clientWidth,h=cv.clientHeight,dpr=devicePixelRatio||1;
+  if(cv.width!=Math.round(w*dpr)||cv.height!=Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr)}
+  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+  const reach=Math.max(...scene.atoms.map(a=>Math.hypot(...a.pos)));
+  const S=Math.min(w,h)*Math.min(.21,.42/(reach+.5))*zoom,items=[];
+  const pr=v=>{const[x,y,z]=rot(v),k=12/(12-z);return{x:w/2+x*S*k,y:h/2-y*S*k,z,k}};
+  const rad=el=>EL[el].r*(scene.atoms.length>7?.85:1);
+  scene.atoms.forEach(at=>{const p=pr(at.pos),el=at.el,e=EL[el],R=rad(el)*S*p.k;items.push({z:p.z,f(){
+    const g=ctx.createRadialGradient(p.x-R*.35,p.y-R*.35,R*.05,p.x,p.y,R);
+    g.addColorStop(0,"#fff");g.addColorStop(.25,e.c);g.addColorStop(1,shade(e.c));
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,R,0,7);ctx.fill();
+    ctx.fillStyle=["H","F","S","Cl","He","Ne","Be"].includes(el)?"#111":"#fff";
+    ctx.font="600 "+Math.max(10,R*.7)+"px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(at.name||el,p.x,p.y)}})});
+  for(const bd of scene.bonds){
+    const A=scene.atoms[bd.a],B=scene.atoms[bd.b],v=add3(B.pos,mul3(A.pos,-1)),len=Math.hypot(...v),u=unit(v);
+    const a=add3(A.pos,mul3(u,rad(A.el)*.9)),b=add3(B.pos,mul3(u,-rad(B.el)*.9)),N=8;
+    if(len<.1)continue;
+    for(let i=0;i<N;i++){
+      const at=t=>a.map((x,j)=>x+(b[j]-x)*t),p=pr(at(i/N)),q=pr(at((i+1)/N));
+      items.push({z:(p.z+q.z)/2,f(){
+        let nx=-(q.y-p.y),ny=q.x-p.x;const L=Math.hypot(nx,ny);
+        if(L<.01)return;nx/=L;ny/=L;
+        for(let k=0;k<bd.order;k++){const o=(k-(bd.order-1)/2)*S*.11;
+          ctx.strokeStyle=EL[(i<N/2?A:B).el].c;ctx.lineWidth=S*(bd.order>1?.065:.11)*p.k;ctx.lineCap="round";
+          ctx.beginPath();ctx.moveTo(p.x+nx*o,p.y+ny*o);ctx.lineTo(q.x+nx*o,q.y+ny*o);ctx.stroke()}
+      }});
+    }
+  }
+  if($("lp").checked)for(const l of scene.lps){
+    const from=scene.atoms[l.i].pos,p=pr(add3(from,mul3(l.d,.65))),base=pr(from),R=S*.22*p.k;
+    items.push({z:p.z,f(){
+      const ang=Math.atan2(p.y-base.y,p.x-base.x),len=Math.max(R,Math.hypot(p.x-base.x,p.y-base.y)*.7);
+      ctx.fillStyle="rgba(120,220,255,.28)";ctx.strokeStyle="rgba(150,230,255,.7)";ctx.lineWidth=1;
+      ctx.beginPath();ctx.ellipse(p.x,p.y,len,R,ang,0,7);ctx.fill();ctx.stroke();
+      ctx.fillStyle="#dff8ff";
+      for(const s of[-1,1]){ctx.beginPath();ctx.arc(p.x-Math.sin(ang)*s*R*.35,p.y+Math.cos(ang)*s*R*.35,2.5,0,7);ctx.fill()}
+    }});
+  }
+  items.sort((a,b)=>a.z-b.z).forEach(i=>i.f());
+  const c=scene.centers[sel];
+  if($("ang").checked&&c)angs.forEach((an,i)=>{
+    const o=scene.atoms[c.i].pos,R=.55+i*.17,om=an.g*Math.PI/180;
+    const perp=an.g>179?unit(cross(an.a,Math.abs(an.a[1])<.9?[0,1,0]:[1,0,0])):an.b.map((x,j)=>(x-an.a[j]*Math.cos(om))/Math.sin(om));
+    const pts=Array.from({length:25},(_,k)=>{const t=om*k/24;return pr(add3(o,an.a.map((x,j)=>R*(x*Math.cos(t)+perp[j]*Math.sin(t)))))});
+    ctx.strokeStyle="#ffd166";ctx.lineWidth=1.5;ctx.setLineDash([4,4]);ctx.beginPath();
+    pts.forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.stroke();ctx.setLineDash([]);
+    const m=pts[12],s=an.g+"°";ctx.font="600 13px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.lineWidth=4;ctx.strokeStyle="#0f1b26";ctx.strokeText(s,m.x,m.y);ctx.fillStyle="#ffd166";ctx.fillText(s,m.x,m.y);
+  });
+}
+function shade(hex){const n=parseInt(hex.slice(1),16);return"rgb("+[16,8,0].map(s=>Math.round((n>>s&255)*.45)).join()+")"}
+let last=null;
+cv.onpointerdown=e=>{last=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)};
+cv.onpointermove=e=>{if(!last)return;ry+=(e.clientX-last[0])*.01;rx+=(e.clientY-last[1])*.01;last=[e.clientX,e.clientY];draw()};
+cv.onpointerup=cv.onpointercancel=()=>last=null;
+$("zi").onclick=()=>{zoom=Math.min(2,zoom*1.15);draw()};
+$("zo").onclick=()=>{zoom=Math.max(.5,zoom/1.15);draw()};
+$("lp").onchange=$("ang").onchange=draw;
+(function tick(){if($("spin").checked&&!last){ry+=.008;draw()}requestAnimationFrame(tick)})();
+$("f").onsubmit=e=>{e.preventDefault();show($("q").value)};
+for(const f of["H2CCH2","CH3CH2OH","CH3COOH","CO2","BF3","CH4","NH3","H2O","PCl5","SF4","ClF3","XeF4","SF6","NO3-","SO4^2-"]){
+  const b=document.createElement("button");b.type="button";b.textContent=sub(f);b.onclick=()=>{$("q").value=f;show(f)};$("ex").append(b)}
+addEventListener("resize",draw);
+show($("q").value);
+</script>
